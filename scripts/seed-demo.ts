@@ -121,7 +121,7 @@ function assertSafeTarget(): void {
       ...problems.map((p) => `    · ${p}`),
       '',
       '    Wenn das wirklich eine Wegwerf-Datenbank ist:',
-      '      NODE_ENV=development npx tsx scripts/seed-demo.ts',
+      '      set -a && . ./.env && set +a && NODE_ENV=development npx tsx scripts/seed-demo.ts',
       '',
     ].join('\n'),
   );

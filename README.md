@@ -42,11 +42,15 @@ cp .env.example .env
 #    → alle CHANGE_ME / leeren Werte befüllen (siehe unten)
 
 # 2. Starten (DB-Migrationen + erster Admin + Signaturschlüssel laufen automatisch)
-docker compose up -d --build
+docker compose up -d
 
 # 3. Health prüfen
 curl -s http://127.0.0.1:3000/api/health   # {"status":"ok"}
 ```
+
+Es wird kein lokaler Build gebraucht: Compose zieht das per CI gebaute Image
+`ghcr.io/leviora-studio/limen`. Ohne Angabe läuft `:latest` — für den Produktivbetrieb besser
+auf eine Version pinnen, z.B. `LIMEN_TAG=1.0.5` in der `.env`.
 
 Beim ersten Start werden die DB-Migrationen angewandt, der erste SSO-Admin aus
 `ADMIN_USER`/`ADMIN_PASSWORD` angelegt und ein RS256-Signaturschlüssel erzeugt.
@@ -55,7 +59,7 @@ Beim ersten Start werden die DB-Migrationen angewandt, der erste SSO-Admin aus
 
 | Variable | Zweck |
 |---|---|
-| `APP_BASE_URL` | Öffentliche HTTPS-URL = OIDC-issuer, z.B. `https://id.example.de` (beim Build gesetzt) |
+| `APP_BASE_URL` | Öffentliche HTTPS-URL = OIDC-issuer, z.B. `https://id.example.de` (reine Laufzeit-Config) |
 | `AUTH_SECRET` | iron-session-Secret (≥ 32 Zeichen) – `openssl rand -hex 32` |
 | `ENCRYPTION_KEY` | 64 Hex (32 Byte) für AES-256-GCM – `openssl rand -hex 32` |
 | `DATABASE_URL` / `POSTGRES_PASSWORD` | PostgreSQL-Verbindung bzw. DB-Passwort |
@@ -63,6 +67,7 @@ Beim ersten Start werden die DB-Migrationen angewandt, der erste SSO-Admin aus
 | `UPLOAD_DIR` | Avatar-Verzeichnis (Volume) |
 | `AUTH_TRUST_HOST` | `true` hinter nginx |
 | `TRUSTED_PROXY_SECRET` | Optional: Shared-Secret gegen IP-Spoofing (nginx sendet `X-Proxy-Auth`) |
+| `LIMEN_TAG` | Optional: Image-Version für Compose (z.B. `1.0.5`), sonst `latest` |
 
 `.env.example` = schlanke Vorlage · `.env.example.read` = ausführlich kommentiertes Nachschlagewerk.
 
@@ -80,9 +85,12 @@ darüber (oder im selben Docker-Netz via `app:3000` mit `expose: ['3000']`).
 - **`ENCRYPTION_KEY` sicher aufbewahren/sichern.** Geht er verloren, sind die verschlüsselten
   Signaturschlüssel und TOTP-Secrets nicht mehr entschlüsselbar. Wechsel nur über das
   Rotations-Skript (siehe unten).
-- **`APP_BASE_URL` = echte öffentliche HTTPS-URL**, schon beim `docker build` gesetzt – sie
-  fließt in den issuer **und** in den CSRF-Origin-Check (`serverActions.allowedOrigins`). Falsch
-  gesetzt ⇒ Tokens/Logins brechen.
+- **`APP_BASE_URL` = echte öffentliche HTTPS-URL**, zur **Laufzeit** gesetzt (compose/`.env`),
+  nicht beim Build. Das Image ist dadurch deployment-URL-unabhängig. Aus ihr leiten sich issuer,
+  Redirects und die WebAuthn-rpID ab; falsch gesetzt ⇒ Tokens/Logins brechen.
+- **nginx muss den korrekten `Host` durchreichen.** Der CSRF-Schutz der Server Actions hängt am
+  eingebauten Origin↔Host-Abgleich, **nicht** an `APP_BASE_URL`. Ein falscher `Host` blockt jedes
+  Formular (Login, Konto, Admin). Siehe [`nginx.conf.example`](./nginx.conf.example).
 - **App nicht direkt exponieren.** Sie muss hinter nginx liegen (Loopback-Bind bzw. `expose`).
   Direktzugriff an nginx vorbei würde `X-Real-IP`-Spoofing erlauben (IP-Drossel/Audit). Empfohlen:
   zusätzlich `TRUSTED_PROXY_SECRET` + `proxy_set_header X-Proxy-Auth …` in nginx.
@@ -103,11 +111,35 @@ siehe [`CLAUDE.md`](./CLAUDE.md).
 
 ```bash
 npm install
-cp .env.example .env          # lokale Werte (APP_BASE_URL=http://localhost:3000)
+cp .env.example .env           # lokale Werte (APP_BASE_URL=http://localhost:3000)
+
+# PostgreSQL bereitstellen: in docker-compose.yml den ports-Block des db-Service
+# einkommentieren (127.0.0.1:5432:5432), dann nur die Datenbank starten:
+docker compose up -d db
+
 npm run dev                    # Dev-Server (aktiviert /dev/test-client)
 npm run verify                 # E2E-Verifikation des OIDC-Flows
 npm run typecheck && npm run lint
 ```
+
+### Beispieldaten (Demo/Screenshots)
+
+`scripts/seed-demo.ts` legt einen vollständig gefüllten Beispielstand an: erfundene Konten,
+registrierte Apps, Audit-Protokoll, 2FA und Anmeldeverlauf.
+
+> **Das Skript ist destruktiv** – es löscht vorher alle Konten und Client-Registrierungen.
+> Es läuft deshalb nur, wenn `NODE_ENV=development` gesetzt ist, `DATABASE_URL` **und**
+> `APP_BASE_URL` auf localhost zeigen und die Datenbank keine fremden Konten oder Anwendungen
+> enthält. Andernfalls bricht es ab, bevor es etwas schreibt.
+
+```bash
+set -a && . ./.env && set +a && NODE_ENV=development npx tsx scripts/seed-demo.ts
+```
+
+(`tsx` liest die `.env` nicht selbst — daher das vorangestellte `set -a && . ./.env`.)
+
+Das Passwort aller Demo-Konten kommt aus `DEMO_PASSWORD` (`.env`); ohne die Variable wird ein
+Zufallspasswort erzeugt und einmalig ausgegeben.
 
 ## Betriebs-/Notfall-Skripte (Server-/DB-Zugriff nötig)
 
