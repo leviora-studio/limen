@@ -16,6 +16,25 @@ Der Dienst ist **die zentrale Stelle für Identität** (Konten, Login, Profil). 
 | Passwort-Reset | **Nur Admin-Reset** (kein Mailversand; später nachrüstbar) |
 | Consent-Screen | Wird für **first-party**-Clients übersprungen |
 | Self-Service | Passwort ändern, Name ändern, Avatar verwalten. Username ist **immutabel**. |
+| Lizenz | **AGPL-3.0-only** — ausdrücklich nur Version 3, **kein** „or later". © Leviora Studio. |
+
+## Lizenz-Konvention (bei neuen Dateien beachten)
+
+Jede Quelldatei trägt in den ersten beiden Zeilen:
+
+```ts
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Leviora Studio
+```
+
+In CSS als Block-Kommentar (`/* … */`). **Nicht** `AGPL-3.0-or-later` (die frühere Angabe, bewusst
+abgeschafft) und **nicht** das bloße `AGPL-3.0` (im SPDX-Verzeichnis als veraltet markiert, löst
+Warnungen in npm und Lizenz-Scannern aus). Beim Kopieren eines Headers aus älteren Quellen oder aus
+dem Gedächtnis prüfen — bei ~95 einheitlichen Headern fällt eine einzelne Abweichung nicht auf.
+
+`LICENSE` ist der wörtliche AGPL-Text der FSF und wird **nie** verändert; das „or later" in seinem
+Anwendungs-Anhang ist FSF-Vorlagentext, keine Erklärung dieses Projekts. Fremdlizenzen von
+Abhängigkeiten (MIT, Apache-2.0, LGPL …) bleiben ebenfalls unangetastet.
 
 ## Tech-Stack
 
@@ -254,6 +273,9 @@ docker compose up    # DB + App lokal
 # Betriebs-/Notfall-Skripte (Server-/DB-Zugriff nötig):
 ENCRYPTION_KEY_OLD=<alt> ENCRYPTION_KEY=<neu> npm run rotate-encryption-key  # AES-Umschlüssel rotieren
 npm run admin:recover -- --user <name> --reset-2fa --make-admin --activate  # Break-Glass-Recovery
+
+# Demo-Beispieldaten für Screenshots (NUR lokal, siehe Warnung unten):
+set -a && . ./.env && set +a && NODE_ENV=development npx tsx scripts/seed-demo.ts
 ```
 
 **Scopes pro Client:** `oauth_clients.allowed_scopes` (leer = alle unterstützten erlaubt). `/authorize`
@@ -264,6 +286,16 @@ TOTP) von OLD auf NEW neu; danach `ENCRYPTION_KEY` dauerhaft setzen und neu star
 
 **Break-Glass:** `admin:recover` (nur via Server/DB) setzt für ein Konto 2FA/Passkeys zurück, macht
 es zum Admin, aktiviert es und/oder setzt das Passwort — Notfallpfad bei komplettem Admin-Lockout.
+
+**Demo-Seed:** `seed-demo.ts` legt einen vollständig gefüllten Beispielstand an (erfundene Konten,
+Client-Apps, Audit-Log, 2FA, Anmeldeverlauf) — Grundlage für Produkt-Screenshots. **Destruktiv:**
+löscht vorher alle Konten und Client-Registrierungen. Vier Sperren greifen vor jedem Schreibzugriff:
+`NODE_ENV=development` explizit gesetzt · `DATABASE_URL` auf Loopback · `APP_BASE_URL` auf Loopback
+(fängt den Lauf auf dem Server selbst bzw. per SSH-Tunnel ab) · `assertNoForeignData()` prüft den
+Inhalt von `users`+`oauth_clients` und bricht bei jedem fremden Datensatz ab. Das Demo-Passwort steht
+bewusst **nicht** im Quelltext, sondern in `DEMO_PASSWORD` (`.env`); ohne die Variable wird ein
+Zufallspasswort erzeugt und einmalig ausgegeben. `tsx` lädt die `.env` nicht selbst — daher das
+vorangestellte `set -a && . ./.env`.
 
 ## Projektstruktur
 
@@ -276,6 +308,6 @@ components/          # Avatar, Select, FileInput, Modal, SubmitButton, Formulare
 db/                  # schema.ts, index.ts (Drizzle)
 lib/                 # session, auth, crypto, oidc/* (keys, jwt, pkce, clients, codes, tokens)
 drizzle/             # generierte Migrationen
-scripts/             # verify-oidc.ts, rotate-encryption-key.ts, admin-recover.ts
+scripts/             # verify-oidc.ts, rotate-encryption-key.ts, admin-recover.ts, seed-demo.ts
 instrumentation.ts   # Bootstrap (Migrate + Seed + Keys)
 ```
