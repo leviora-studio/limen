@@ -24,7 +24,7 @@ services:
   app:
     # Vorgebautes Image aus der GitHub Container Registry (ghcr.io, per CI gepusht).
     # Tag optional über LIMEN_TAG pinnen (z. B. 1.0.0 oder eine Commit-SHA), sonst :latest.
-    image: ghcr.io/erikenglerdev/limen:${LIMEN_TAG:-latest}
+    image: ghcr.io/leviora-studio/limen:${LIMEN_TAG:-latest}
     pull_policy: always
     restart: unless-stopped
     # Erkennt einen hängenden Container (läuft, aber kaputt) — node bringt fetch
